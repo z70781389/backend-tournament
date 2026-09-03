@@ -10,7 +10,7 @@ const MILESTONES = [
 ];
 
 // Easily replaceable later — set WEBSITE_URL in env for production.
-const WEBSITE_URL = process.env.WEBSITE_URL || "http://localhost:3000";
+const WEBSITE_URL = process.env.WEBSITE_URL || "http://backend-tournament-production.up.railway.app";
 
 function buildReferralLink(referralCode) {
   return `${WEBSITE_URL}/signup?ref=${referralCode}`;
