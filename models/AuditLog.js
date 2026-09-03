@@ -25,6 +25,8 @@ const AuditLogSchema = new mongoose.Schema(
         "PRIZE_DISTRIBUTED",
         "SEAT_BOOKED",
         "ADMIN_ACTION",
+        "REFERRAL_QUALIFIED",       // ✅ REFERRAL: new action value
+        "REFERRAL_REWARD_CLAIMED",  // ✅ REFERRAL: new action value
       ],
     },
 

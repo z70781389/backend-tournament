@@ -9,11 +9,8 @@ const {
   loginUser,
   saveFcmToken,
   signupUser,
+  updateFreefireId,
 } = require("../controllers/userController");
-
-// ════════════════════════════════════════════════════════════════════════════
-//  RATE LIMITERS
-// ════════════════════════════════════════════════════════════════════════════
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -59,9 +56,16 @@ const fcmLimiter = rateLimit({
   legacyHeaders:   false,
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  GLOBAL REQUEST LOGGER MIDDLEWARE
-// ════════════════════════════════════════════════════════════════════════════
+const freefireIdLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max:      5,
+  message: {
+    success: false,
+    message: "Too many Free Fire ID update attempts. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+});
 
 router.use((req, res, next) => {
   console.log("➡️ USER REQUEST BODY:", req.body);
@@ -70,33 +74,20 @@ router.use((req, res, next) => {
   next();
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  INPUT VALIDATION MIDDLEWARE
-// ════════════════════════════════════════════════════════════════════════════
-
 const validateLogin = (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || typeof email !== "string") {
-    return res.status(400).json({
-      success: false,
-      message: "Email is required",
-    });
+    return res.status(400).json({ success: false, message: "Email is required" });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email.trim())) {
-    return res.status(400).json({
-      success: false,
-      message: "Please enter a valid email address",
-    });
+    return res.status(400).json({ success: false, message: "Please enter a valid email address" });
   }
 
   if (!password || password.length < 6) {
-    return res.status(400).json({
-      success: false,
-      message: "Password must be at least 6 characters",
-    });
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
   }
 
   req.body.email = email.trim().toLowerCase();
@@ -106,24 +97,12 @@ const validateLogin = (req, res, next) => {
 const validateFcmToken = (req, res, next) => {
   const { userId, fcmToken } = req.body;
 
-  console.log("📲 FCM TOKEN SAVE REQUEST:");
-  console.log("User ID:", userId);
-  console.log("FCM Token:", fcmToken);
-
   if (!userId || typeof userId !== "string" || userId.trim().length === 0) {
-    console.error("❌ FCM VALIDATION FAILED: userId missing");
-    return res.status(400).json({
-      success: false,
-      message: "userId is required",
-    });
+    return res.status(400).json({ success: false, message: "userId is required" });
   }
 
   if (!fcmToken || typeof fcmToken !== "string" || fcmToken.trim().length === 0) {
-    console.error("❌ FCM VALIDATION FAILED: fcmToken missing");
-    return res.status(400).json({
-      success: false,
-      message: "fcmToken is required",
-    });
+    return res.status(400).json({ success: false, message: "fcmToken is required" });
   }
 
   next();
@@ -134,51 +113,30 @@ const validateUserId = (req, res, next) => {
   const objectIdRegex = /^[a-fA-F0-9]{24}$/;
 
   if (!objectIdRegex.test(userId)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid user ID format",
-    });
+    return res.status(400).json({ success: false, message: "Invalid user ID format" });
   }
 
   next();
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-//  AUTH ROUTES
-// ════════════════════════════════════════════════════════════════════════════
 
 router.post("/signup", (req, res, next) => {
   console.log("🔥🔥 SIGNUP ROUTE HIT");
   console.log("🔥 BODY:", req.body);
   next();
 }, authLimiter, signupUser);
+
 router.post("/login", loginLimiter, validateLogin, loginUser);
 
 router.post("/logout", protect, logout);
 
-// ════════════════════════════════════════════════════════════════════════════
-//  FCM TOKEN
-// ════════════════════════════════════════════════════════════════════════════
-
 router.post("/fcm-token", protect, fcmLimiter, validateFcmToken, async (req, res, next) => {
-  console.log("🔐 USER AUTH CHECK:");
-  console.log("User:", req.user);
-  console.log("User ID:", req.user?._id);
-  console.log("Token Valid:", req.headers.authorization ? true : false);
   next();
 }, saveFcmToken);
 
-// ════════════════════════════════════════════════════════════════════════════
-//  USER PROFILE
-// ════════════════════════════════════════════════════════════════════════════
+router.put("/update-freefireid", protect, freefireIdLimiter, updateFreefireId);
 
 router.get("/:userId", protect, profileLimiter, validateUserId, async (req, res) => {
   const { userId } = req.params;
-
-  console.log("🔐 USER AUTH CHECK:");
-  console.log("User:", req.user);
-  console.log("User ID:", req.user?._id);
-  console.log("Token Valid:", req.headers.authorization ? true : false);
 
   if (req.user._id.toString() !== userId) {
     try {
@@ -192,20 +150,14 @@ router.get("/:userId", protect, profileLimiter, validateUserId, async (req, res)
       });
     } catch (_) {}
 
-    return res.status(403).json({
-      success: false,
-      message: "Access denied",
-    });
+    return res.status(403).json({ success: false, message: "Access denied" });
   }
 
   try {
     const user = await User.findById(userId).select("-password -fcmTokens");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     try {
@@ -241,7 +193,6 @@ router.get("/:userId", protect, profileLimiter, validateUserId, async (req, res)
 
   } catch (error) {
     console.error("❌ ERROR OCCURRED:", error);
-    console.error("Stack:", error.stack);
     return res.status(500).json({
       success: false,
       message: "Server error",
@@ -250,9 +201,6 @@ router.get("/:userId", protect, profileLimiter, validateUserId, async (req, res)
   }
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-//  404 HANDLER
-// ════════════════════════════════════════════════════════════════════════════
 router.use((req, res) => {
   res.status(404).json({
     success: false,

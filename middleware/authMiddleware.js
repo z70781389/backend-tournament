@@ -20,12 +20,12 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: "Not authorized" });
     }
 
-    // ✅ FIX #2: Blacklist check (logout / session invalidation)
+    // ✅ Blacklist check (logout / session invalidation)
     if (tokenBlacklist.has(token)) {
       return res.status(401).json({ success: false, message: "Session expired. Please login again." });
     }
 
-    // ✅ FIX #2: Strict expiry verification
+    // ✅ Strict expiry verification
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET, {
@@ -44,7 +44,18 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: "User not found." });
     }
 
-    // ✅ FIX #2: Token issued-at check — agar password change hua to purana token invalid
+    // ✅ Blocked-account enforcement — checked fresh from DB on every request,
+    // so an already-logged-in user is cut off on their very next call after being blocked.
+    if (user.isBlocked) {
+      const reasonText = user.blockReason ? ` Reason: ${user.blockReason}.` : "";
+      return res.status(403).json({
+        success: false,
+        message: `Your account has been blocked by Admin.${reasonText} Please contact Admin.`,
+        blocked: true,
+      });
+    }
+
+    // ✅ Token issued-at check — agar password change hua to purana token invalid
     if (user.passwordChangedAt) {
       const changedAt = Math.floor(user.passwordChangedAt.getTime() / 1000);
       if (decoded.iat < changedAt) {
@@ -61,7 +72,7 @@ const protect = async (req, res, next) => {
   }
 };
 
-// ✅ FIX #9: Admin-only middleware — double check (token + DB)
+// ✅ Admin-only middleware — double check (token + DB)
 const adminOnly = async (req, res, next) => {
   try {
     let token;
@@ -109,7 +120,7 @@ const adminOnly = async (req, res, next) => {
   }
 };
 
-// ✅ FIX #2: Logout — token blacklist میں ڈالو
+// ✅ Logout — token blacklist میں ڈالو
 const logout = (req, res) => {
   const token = req.token || (req.headers.authorization?.split(" ")[1]);
   if (token) {

@@ -6,6 +6,7 @@ const mongoose        = require("mongoose");
 const AuditLog        = require("../models/AuditLog");
 const Transaction     = require("../models/Transaction");
 const notif = require("../services/notificationService");
+const BlockedFreeFireId = require("../models/BlockedFreeFireId");
 
 function isValidUrl(str) {
   try {
@@ -16,9 +17,6 @@ function isValidUrl(str) {
   }
 }
 
-// ----------------------------------------------------------------
-// Stars + Level Helper
-// ----------------------------------------------------------------
 function shouldGiveStar(level, rank) {
   if (level >= 1 && level <= 3) return rank <= 12;
   if (level >= 4 && level <= 6) return rank <= 8;
@@ -141,8 +139,6 @@ exports.getAllTournaments = async (req, res) => {
     const tournamentsWithFlag = tournaments.map(t => {
       const obj = t.toObject();
       obj.isResultSubmitted = submittedIds.has(t._id.toString());
-      // ✅ FIX: "delete obj.joinPassword" hata diya — admin panel ko
-      // joinCode/joinPassword dikhane ke liye ye field zaroori hai
       return obj;
     });
 
@@ -171,6 +167,7 @@ exports.getParticipants = async (req, res) => {
         userID:           p.userID,
         participantId:    p.participantId,
         freeFireUsername: p.freeFireUsername || "",
+        freefireId:       p.freefireId        || "",
         playerName:       p.playerName       || "",
         userName:         p.userName         || "",
         email:            p.email            || "",
@@ -244,6 +241,45 @@ exports.joinTournament = async (req, res) => {
       return res.status(404).json({ success: false, message: "User or Tournament not found" });
     }
 
+    // Blocked account cannot join
+    if (user.isBlocked) {
+      await session.abortTransaction(); session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been blocked by the administrator.",
+      });
+    }
+
+    // Always use account's saved Free Fire ID — never client input
+    const accountFreefireId = user.freefireId;
+
+    const blockedId = await BlockedFreeFireId.findOne({
+      freefireId: accountFreefireId,
+      active: true,
+    }).session(session);
+
+    if (blockedId) {
+      await session.abortTransaction(); session.endSession();
+
+      await AuditLog.create([{
+        userId,
+        action:     "BLOCKED_FREEFIREID_JOIN_ATTEMPT",
+        targetId:   tournamentId,
+        targetType: "Tournament",
+        meta: {
+          freefireId: accountFreefireId,
+          blockReason: blockedId.reason,
+        },
+        ip:     req.ip,
+        status: "blocked",
+      }]);
+
+      return res.status(403).json({
+        success: false,
+        message: "This Free Fire ID is not allowed to participate in tournaments.",
+      });
+    }
+
     const alreadyJoined = await JoinTournament.findOne({
       userID: userId, tournamentID: tournamentId
     }).session(session);
@@ -306,6 +342,7 @@ exports.joinTournament = async (req, res) => {
       userID:           userId,
       tournamentID:     tournamentId,
       freeFireUsername: freeFireUsername.trim(),
+      freefireId:       accountFreefireId,
       playerName:       playerName ? playerName.trim() : freeFireUsername.trim(),
       userName:         user.username,
       email:            user.email,
@@ -315,7 +352,6 @@ exports.joinTournament = async (req, res) => {
     });
     await join.save({ session });
 
-    // ✅ ADD: user ne join kiya = 1 match count
     await User.findByIdAndUpdate(
       userId,
       { $inc: { totalMatches: 1 } },
@@ -354,6 +390,7 @@ exports.joinTournament = async (req, res) => {
       meta: {
         seats:            requestedSeats,
         freeFireUsername: freeFireUsername.trim(),
+        freefireId:       accountFreefireId,
         isFree,
       },
       ip:     req.ip,
@@ -368,6 +405,7 @@ exports.joinTournament = async (req, res) => {
       message: "Joined successfully",
       data: {
         participantId:    join.participantId,
+        freefireId:       accountFreefireId,
         remainingBalance: user.deposit + user.winning + user.bonus,
         lockedSeats:      requestedSeats,
       },
@@ -463,7 +501,7 @@ exports.cancelTournament = async (req, res) => {
 };
 
 // ----------------------------------------------------------------
-// Submit Result — FIXED: wallet update + stars/level + transactions
+// Submit Result
 // ----------------------------------------------------------------
 exports.submitResult = async (req, res) => {
   try {
@@ -523,8 +561,6 @@ exports.submitResult = async (req, res) => {
     session.startTransaction();
 
     try {
-
-      // ✅ FIX: Update winners — winning balance + coins + stars/level + transaction
       for (const w of winners) {
         const prize = Number(w.prize) || 0;
         const uid   = w.userId.toString().trim();
@@ -533,7 +569,6 @@ exports.submitResult = async (req, res) => {
         let winnerUser = await User.findById(uid).session(session).catch(() => null);
         if (!winnerUser) continue;
 
-        // Add winning amount
         if (prize > 0) {
           winnerUser.winning = (winnerUser.winning || 0) + prize;
           winnerUser.coins   = (winnerUser.coins   || 0) + prize;
@@ -542,7 +577,6 @@ exports.submitResult = async (req, res) => {
           winnerUser.totalWins  = (winnerUser.totalWins  || 0) + 1;
         }
 
-        // ✅ FIX: Stars + Level system
         if (shouldGiveStar(winnerUser.level || 1, pos)) {
           winnerUser.stars = (winnerUser.stars || 0) + 1;
         }
@@ -554,7 +588,6 @@ exports.submitResult = async (req, res) => {
 
         await winnerUser.save({ session });
 
-        // ✅ FIX: Create transaction record for winner
         if (prize > 0) {
           await Transaction.create([{
             userId:       uid,
@@ -641,8 +674,6 @@ exports.updateTournament = async (req, res) => {
       req.body.image = req.body.image.trim();
     }
 
-    // ✅ FIX: joinPassword ko sirf tab ignore karo jab admin ne empty bheja ho,
-    // warna edit screen se update kabhi save nahi hota tha
     if (req.body.joinPassword !== undefined && req.body.joinPassword.toString().trim() === "") {
       delete req.body.joinPassword;
     }

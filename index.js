@@ -15,6 +15,7 @@ const withdrawRoutes   = require("./routes/withdraw_routes");
 const adminAuthRoutes  = require("./routes/admin.auth.routes");
 const dashboardRoutes  = require("./routes/dashboard.routes");
 const supportRoute     = require("./routes/supportRoute");
+const referralRoutes   = require("./routes/referralRoutes");   // ✅ REFERRAL: new import
 
 const { protect }  = require("./middleware/authMiddleware");
 const requestGuard = require("./middleware/requestGuard");
@@ -122,6 +123,8 @@ app.use("/api/v1/admin/user",  adminAuthRoutes);
 app.use("/api/v1/dashboard",   dashboardRoutes);
 app.use("/api/v1/support",     supportRoute);
 app.use("/api/v1/leaderboard", require("./routes/leaderboard_routes"));
+app.use("/api/v1/referral",    referralRoutes);
+app.use("/api/v1/admin/users", require("./routes/adminUserRoutes"));   // ✅ REFERRAL: new route mount
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -138,7 +141,7 @@ app.use((err, req, res, next) => {
 });
 
 // ─── START ────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);

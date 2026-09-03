@@ -11,7 +11,13 @@ const JoinTournamentSchema = new mongoose.Schema({
   userID: { type: String, required: false, default: "test-user" },
   tournamentID: { type: String, required: false, default: "test-tournament" },
 
-  freeFireUsername: { type: String, default: null },  // ✅ NEW
+  freeFireUsername: { type: String, default: null },
+
+  // Authoritative Free Fire ID — always copied server-side from the
+  // logged-in user's saved User.freefireId at join time. Never trust
+  // a client-supplied value here.
+  freefireId: { type: String, default: null },
+
   playerName: { type: String, default: null },
   userName: { type: String, default: null },
   email: { type: String, default: null },
