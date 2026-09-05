@@ -12,7 +12,7 @@ const MILESTONES = [
 // Easily replaceable later — set WEBSITE_URL in env for production.
 const WEBSITE_URL = process.env.WEBSITE_URL || "https://soloclash.online";
 function buildReferralLink(referralCode) {
-  return `${WEBSITE_URL}/signup?ref=${referralCode}`;
+  return `${WEBSITE_URL}/#/signup?ref=${referralCode}`;
 }
 
 async function getQualifiedCount(referrerId) {
