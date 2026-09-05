@@ -15,6 +15,7 @@ function buildReferralLink(referralCode) {
   return `${WEBSITE_URL}/#/signup?ref=${referralCode}`;
 }
 
+//changes
 async function getQualifiedCount(referrerId) {
   return Referral.countDocuments({ referrer: referrerId, qualified: true });
 }
